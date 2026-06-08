@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "kagura-planner",
+  "description": "Memory-grounded PLAN-layer skill — idea → recallable plan doc, grounded in Kagura Memory.",
+  "owner": {
+    "name": "Kagura AI, Inc.",
+    "url": "https://github.com/kagura-ai"
+  },
+  "plugins": [
+    {
+      "name": "kagura-planner",
+      "source": "./",
+      "version": "0.1.0",
+      "category": "ai"
+    }
+  ]
+}
