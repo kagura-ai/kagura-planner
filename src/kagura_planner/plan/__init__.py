@@ -24,7 +24,7 @@ STATUS_EXIT: dict[PlanStatus, int] = {
     PlanStatus.OK: 0, PlanStatus.FAIL: 1, PlanStatus.BLOCKED: 2,
 }
 
-_EDGE_RELATION = "refines"  # plan → recalled memory it builds on
+_EDGE_RELATION = "depends_on"  # plan → recalled memory it builds on (server edge_type)
 
 
 def _safe_close(mem: MemoryClient) -> None:

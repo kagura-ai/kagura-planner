@@ -78,8 +78,27 @@ def test_persist_wires_edges_to_recalled(valid_config, tmp_path, monkeypatch):
 
     mem = _Mem()
     report = plan_idea(valid_config, "idea", date="2026-06-08", memory=mem)
-    assert mem.edges == [("mem-new", "m1", "refines")]
-    assert report.edges == ["mem-new->m1:refines"]
+    assert mem.edges == [("mem-new", "m1", "depends_on")]
+    assert report.edges == ["mem-new->m1:depends_on"]
+
+
+# The Memory Cloud server rejects any edge_type outside this set with
+# `invalid_edge_type`, which silently dropped every plan->memory edge at runtime
+# (the unit fakes accept anything, so only this contract test catches it).
+_SERVER_ALLOWED_EDGE_TYPES = {
+    "continues_from",
+    "depends_on",
+    "learned_from",
+    "neural_association",
+    "references_file",
+    "related_to",
+}
+
+
+def test_edge_relation_is_a_valid_server_edge_type():
+    from kagura_planner.plan import _EDGE_RELATION
+
+    assert _EDGE_RELATION in _SERVER_ALLOWED_EDGE_TYPES
 
 
 # ---------------------------------------------------------------------------
