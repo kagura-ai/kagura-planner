@@ -1,0 +1,20 @@
+{
+  "name": "kagura-planner",
+  "version": "0.1.0",
+  "description": "Memory-grounded PLAN-layer skill over Claude Code + Kagura Memory — turns an idea into a recallable, memory-grounded plan doc.",
+  "author": {
+    "name": "Kagura AI, Inc.",
+    "url": "https://github.com/kagura-ai"
+  },
+  "homepage": "https://github.com/kagura-ai/kagura-planner",
+  "repository": "https://github.com/kagura-ai/kagura-planner",
+  "license": "Apache-2.0",
+  "keywords": [
+    "planning",
+    "memory",
+    "claude-code",
+    "kagura",
+    "ai-agent",
+    "developer-tools"
+  ]
+}
