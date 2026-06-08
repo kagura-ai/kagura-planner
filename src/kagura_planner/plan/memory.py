@@ -44,6 +44,9 @@ class MemoryClient(Protocol):
         self, context_id: str, memory_id: str, *, depth: int = 1
     ) -> list[tuple[str, str]]: ...
     def create_edge(self, context_id: str, src: str, dst: str, relation: str) -> None: ...
+    # Release any backing resources (event loop, httpx client). The orchestrator
+    # calls this when it OWNS the client (created it itself); best-effort.
+    def close(self) -> None: ...
 
 
 # Recalls that influence what the agent does are behaviour-influencing
@@ -161,14 +164,17 @@ class KaguraCloudClient:
         resp = self._run(self._sdk.remember(
             context_id, summary=summary, content=content, type=type, tags=tags
         ))
-        return str(resp.get("memory_id") or "")
+        # memory_id is already a str when present; None/missing → "".
+        return resp.get("memory_id") or ""
 
     def feedback(self, context_id: str, memory_id: str, *, weight: float = 1.0) -> None:
-        # SDK passthrough — reinforce the memory's neural weight. The offline
-        # suite exercises this against an async fake SDK (kagura-memory is a
-        # declared dependency, kagura-memory>=0.29,<0.30); the contract mirrors
-        # the mcp `feedback` tool.
-        self._run(self._sdk.feedback(context_id, memory_id=memory_id, weight=weight))
+        # The real SDK signature is feedback(context_id, memory_id, helpful, ...)
+        # — there is no `weight` parameter (passing it raises TypeError). The
+        # planner only calls feedback to REINFORCE a memory it actually used, so
+        # helpful=True always. `weight` is kept on the interface for Protocol
+        # stability but is meaningless here, hence ignored. The offline suite
+        # exercises this against an async fake SDK (kagura-memory>=0.29,<0.30).
+        self._run(self._sdk.feedback(context_id, memory_id, True))
 
     def explore(
         self, context_id: str, memory_id: str, *, depth: int = 1

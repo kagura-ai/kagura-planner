@@ -29,10 +29,11 @@ class _FakeSDK:
         self.calls.append(("remember", context_id, summary, type))
         return {"memory_id": "mem-new"}
 
-    async def feedback(self, context_id, *, memory_id, weight):
-        self.calls.append(("feedback", context_id, memory_id, weight))
+    async def feedback(self, context_id, memory_id, helpful, *, query=None, note=None):
+        self.calls.append(("feedback", context_id, memory_id, helpful))
+        return {"ok": True}
 
-    async def explore(self, context_id, *, memory_id, depth):
+    async def explore(self, context_id, memory_id, depth=2, min_weight=0.05):
         self.calls.append(("explore", context_id, memory_id, depth))
         return {
             "nodes": [
@@ -53,7 +54,7 @@ class _FakeSDK:
 class _ExploreResultsSDK:
     """explore() returns 'results' key instead of 'nodes'."""
 
-    async def explore(self, context_id, *, memory_id, depth):
+    async def explore(self, context_id, memory_id, depth=2, min_weight=0.05):
         return {
             "results": [
                 {"memory_id": "r1", "summary": "result node"},
@@ -137,26 +138,40 @@ def test_explore_empty_response():
 # ---------------------------------------------------------------------------
 
 
-def test_feedback_passthrough():
+def test_feedback_calls_sdk_with_helpful_true_no_weight():
+    """The wrapper must call the real SDK signature feedback(context_id,
+    memory_id, helpful, ...) with helpful=True (reinforcement = "this memory
+    was helpful") and must NOT pass a `weight` kwarg (the real SDK rejects it).
+    """
     seen = {}
 
     class _Sdk:
-        async def feedback(self, context_id, *, memory_id, weight):
-            seen.update(context_id=context_id, memory_id=memory_id, weight=weight)
+        # Real SDK signature: feedback(context_id, memory_id, helpful, *, query, note).
+        async def feedback(self, context_id, memory_id, helpful, *, query=None, note=None):
+            seen.update(
+                context_id=context_id, memory_id=memory_id, helpful=helpful,
+                query=query, note=note,
+            )
+            return {"ok": True}
 
+    # weight is accepted on the interface but ignored in the body.
     KaguraCloudClient(_Sdk()).feedback("ctx", "m1", weight=2.0)
-    assert seen == {"context_id": "ctx", "memory_id": "m1", "weight": 2.0}
+    assert seen == {
+        "context_id": "ctx", "memory_id": "m1", "helpful": True,
+        "query": None, "note": None,
+    }
 
 
-def test_feedback_default_weight():
+def test_feedback_ignores_weight_and_passes_helpful_true():
+    """Even with no weight given, the SDK is called positionally with helpful=True."""
     seen = {}
 
     class _Sdk:
-        async def feedback(self, context_id, *, memory_id, weight):
-            seen["weight"] = weight
+        async def feedback(self, context_id, memory_id, helpful, *, query=None, note=None):
+            seen.update(args=(context_id, memory_id, helpful))
 
     KaguraCloudClient(_Sdk()).feedback("ctx", "m1")
-    assert seen["weight"] == 1.0
+    assert seen["args"] == ("ctx", "m1", True)
 
 
 # ---------------------------------------------------------------------------
