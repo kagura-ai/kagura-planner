@@ -46,7 +46,8 @@ path = "src/kagura_planner/__init__.py"
 packages = ["src/kagura_planner"]
 
 [tool.hatch.build.targets.sdist]
-exclude = ["/docs"]
+# Claude Code plugin assets ship via the git repo / marketplace, not PyPI.
+exclude = ["/docs", "/.claude-plugin", "/skills"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
