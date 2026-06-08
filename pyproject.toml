@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kagura-planner"
+dynamic = ["version"]
+description = "Memory-grounded PLAN-layer CLI over Claude Code + Kagura Memory"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Kagura AI", email = "dev@kagura-ai.com" }]
+keywords = ["claude-code", "ai-agent", "planning", "kagura", "memory", "harness"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+]
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.7",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "kagura-memory>=0.29,<0.30",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov>=6.0", "mypy>=1.10", "ruff>=0.5"]
+
+[project.scripts]
+kagura-planner = "kagura_planner.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/kagura-ai/kagura-planner"
+Repository = "https://github.com/kagura-ai/kagura-planner"
+
+[tool.hatch.version]
+path = "src/kagura_planner/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kagura_planner"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["/docs"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src/kagura_planner"]
+
+[tool.coverage.report]
+fail_under = 90
+
+[tool.mypy]
+strict = true
+files = ["src"]
+
+[tool.ruff]
+target-version = "py311"

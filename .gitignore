@@ -1,0 +1,10 @@
+# generated plan docs are decision records persisted to Memory Cloud, not git
+/docs/plans/
+__pycache__/
+*.pyc
+.venv/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+dist/

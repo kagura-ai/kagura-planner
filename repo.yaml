@@ -1,0 +1,6 @@
+profile: default
+memory_cloud_url: https://memory.kagura-ai.com
+workspace_id: <your-workspace-uuid>
+context_id: <your-context-uuid>
+# plan_dir: docs/plans          # optional; default shown
+# memory_backend: cloud         # cloud | local
