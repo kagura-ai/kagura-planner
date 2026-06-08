@@ -11,3 +11,5 @@ __pycache__/
 .pytest_cache/
 .coverage
 dist/
+# tool-generated local artifacts (e.g. kagura-code-reviewer's review.json)
+/.kagura/
