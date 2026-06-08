@@ -1,5 +1,8 @@
 # generated plan docs are decision records persisted to Memory Cloud, not git
 /docs/plans/
+# local config carries real workspace_id/context_id — never commit it.
+# Copy repo.yaml.example -> repo.yaml and fill in your own values.
+/repo.yaml
 __pycache__/
 *.pyc
 .venv/
