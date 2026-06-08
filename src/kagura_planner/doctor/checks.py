@@ -13,7 +13,7 @@ from .result import CheckResult, Status
 _TIMEOUT = 5
 
 
-def _run(cmd: list[str]) -> subprocess.CompletedProcess:
+def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, capture_output=True, text=True, timeout=_TIMEOUT)
 
 

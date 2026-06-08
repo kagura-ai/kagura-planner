@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 from ..config import Config
 from . import checks
@@ -12,7 +13,7 @@ _WORST = {Status.OK: 0, Status.WARN: 1, Status.FAIL: 2}
 # Official planning skills `plan` drives via headless claude.
 _REQUIRED_SKILLS = ("brainstorming", "writing-plans")
 
-_CHECKS: list[tuple[str, object]] = [
+_CHECKS: list[tuple[str, Callable[[Config], CheckResult]]] = [
     ("git", lambda c: checks.check_git()),
     ("claude-code", lambda c: checks.check_claude_code()),
     ("memory", lambda c: checks.check_memory_cloud(c.memory_cloud_url)),

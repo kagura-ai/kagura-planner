@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from kagura_planner.doctor import checks
 from kagura_planner.doctor.result import Status
 
