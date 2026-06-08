@@ -162,16 +162,20 @@ def test_feedback_calls_sdk_with_helpful_true_no_weight():
     }
 
 
-def test_feedback_ignores_weight_and_passes_helpful_true():
-    """Even with no weight given, the SDK is called positionally with helpful=True."""
-    seen = {}
+def test_feedback_maps_weight_sign_to_helpful():
+    """The interface's weight maps onto the SDK's helpful bool by sign:
+    weight > 0 → helpful=True (reinforce), weight <= 0 → helpful=False
+    (aligns with kagura-engineer #16)."""
+    seen = []
 
     class _Sdk:
         async def feedback(self, context_id, memory_id, helpful, *, query=None, note=None):
-            seen.update(args=(context_id, memory_id, helpful))
+            seen.append((context_id, memory_id, helpful))
 
-    KaguraCloudClient(_Sdk()).feedback("ctx", "m1")
-    assert seen["args"] == ("ctx", "m1", True)
+    client = KaguraCloudClient(_Sdk())
+    client.feedback("ctx", "m1")              # default weight=1.0 → True
+    client.feedback("ctx", "m2", weight=0.0)  # → False
+    assert seen == [("ctx", "m1", True), ("ctx", "m2", False)]
 
 
 # ---------------------------------------------------------------------------

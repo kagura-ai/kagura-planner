@@ -168,13 +168,13 @@ class KaguraCloudClient:
         return resp.get("memory_id") or ""
 
     def feedback(self, context_id: str, memory_id: str, *, weight: float = 1.0) -> None:
-        # The real SDK signature is feedback(context_id, memory_id, helpful, ...)
-        # — there is no `weight` parameter (passing it raises TypeError). The
-        # planner only calls feedback to REINFORCE a memory it actually used, so
-        # helpful=True always. `weight` is kept on the interface for Protocol
-        # stability but is meaningless here, hence ignored. The offline suite
-        # exercises this against an async fake SDK (kagura-memory>=0.29,<0.30).
-        self._run(self._sdk.feedback(context_id, memory_id, True))
+        # The cloud SDK speaks the MCP `feedback` contract — an append-only
+        # usefulness signal (helpful: bool), not a neural weight; there is no
+        # `weight` parameter (passing it raises TypeError). Map the interface's
+        # reinforcement weight onto helpful by sign: weight > 0 → helpful=True.
+        # `weight` stays on the interface for Protocol stability (a local backend
+        # could honor it as an importance bump). Aligns with kagura-engineer #16.
+        self._run(self._sdk.feedback(context_id, memory_id, helpful=weight > 0))
 
     def explore(
         self, context_id: str, memory_id: str, *, depth: int = 1
