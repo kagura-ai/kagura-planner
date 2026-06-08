@@ -85,7 +85,9 @@ def plan_idea(
             phases.append(PhaseResult("brain", PlanStatus.FAIL, f"failed to launch claude: {exc}"))
             return _finish()
         if brain.returncode != 0:
-            tail = "timed out" if brain.timed_out else (brain.stderr or "").strip()[-200:]
+            # claude -p writes auth/errors to stdout, not stderr; fall back so the
+            # cause isn't hidden as a blank "claude exited 1:".
+            tail = "timed out" if brain.timed_out else (brain.stderr or brain.stdout or "").strip()[-200:]
             phases.append(PhaseResult("brain", PlanStatus.FAIL, f"claude exited {brain.returncode}: {tail}"))
             return _finish()
         if not brain.plan_md:

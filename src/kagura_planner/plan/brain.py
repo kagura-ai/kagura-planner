@@ -15,6 +15,7 @@ Code subscription auth (no ANTHROPIC_API_KEY needed); we never pass a key.
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -67,12 +68,19 @@ def invoke_brain(
     timeout: int = _BRAIN_TIMEOUT_S,
 ) -> BrainResult:
     prompt = build_prompt(idea, grounding)
+    # Run the child on Claude Code SUBSCRIPTION auth — strip ANTHROPIC_API_KEY
+    # from its env. A stale/invalid key inherited from the environment (notably
+    # one injected by a surrounding Claude Code session) would otherwise OVERRIDE
+    # the subscription and make `claude -p` die with "Invalid API key". This makes
+    # the code match this module's "we never pass a key" contract.
+    child_env = os.environ.copy()
+    child_env.pop("ANTHROPIC_API_KEY", None)
     # OSError (claude not on PATH) is NOT caught here — the orchestrator guard
     # (doctor's blocking claude/skills checks) verifies launchability first.
     try:
         proc = subprocess.run(
             ["claude", "-p", prompt],
-            cwd=cwd, capture_output=True, text=True, timeout=timeout,
+            cwd=cwd, capture_output=True, text=True, timeout=timeout, env=child_env,
         )
     except subprocess.TimeoutExpired as exc:
         return BrainResult(-1, as_text(exc.stdout), as_text(exc.stderr) or "timed out",
