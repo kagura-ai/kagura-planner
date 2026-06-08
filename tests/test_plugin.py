@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import yaml
+
 import kagura_planner
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -56,3 +58,30 @@ def test_marketplace_version_synced_everywhere():
         == market["plugins"][0]["version"]
         == kagura_planner.__version__
     ), "version drift across plugin.json / marketplace.json / __version__"
+
+
+SKILL_MD = REPO_ROOT / "skills" / "plan" / "SKILL.md"
+
+
+def _frontmatter(path: Path) -> dict:
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("---\n"), "SKILL.md must open with YAML frontmatter"
+    _, fm, _body = text.split("---\n", 2)
+    return yaml.safe_load(fm)
+
+
+def test_skill_md_exists():
+    assert SKILL_MD.is_file(), f"missing {SKILL_MD}"
+
+
+def test_skill_frontmatter_has_name_and_description():
+    fm = _frontmatter(SKILL_MD)
+    assert fm.get("name") == "plan", "skill name must match its directory ('plan')"
+    assert isinstance(fm.get("description"), str) and fm["description"].strip()
+
+
+def test_skill_body_references_envelope_cli_not_markdown_scraping():
+    body = SKILL_MD.read_text(encoding="utf-8")
+    # The skill must drive the CLI with --envelope and consume JSON, never scrape the doc.
+    assert "kagura-planner plan" in body
+    assert "--envelope" in body
