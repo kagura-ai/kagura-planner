@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ValidationError, model_validator
+from pydantic import BaseModel, ValidationError, field_validator, model_validator
 
 
 class ConfigError(Exception):
@@ -21,6 +21,17 @@ class Config(BaseModel):
     # Directory (relative to the caller's repo) for generated plan docs.
     # Gitignored — plan docs are decision records persisted to Memory Cloud.
     plan_dir: str = "docs/plans"
+
+    @field_validator("plan_dir")
+    @classmethod
+    def _plan_dir_must_be_relative(cls, v: str) -> str:
+        # plan_dir is joined onto the repo root (root / cfg.plan_dir); an
+        # absolute path would silently escape the repo, so reject it. Check both
+        # POSIX (/x) and Windows (C:\x, \\x, \x) absolute forms regardless of host
+        # OS so a config authored on one platform is validated the same on another.
+        if Path(v).is_absolute() or PureWindowsPath(v).is_absolute():
+            raise ValueError(f"plan_dir must be repo-relative, got absolute path: {v!r}")
+        return v
 
     @model_validator(mode="after")
     def _require_cloud_fields(self) -> "Config":

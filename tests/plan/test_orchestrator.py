@@ -8,6 +8,7 @@ from kagura_planner.plan.result import PlanStatus
 class _FakeMem:
     def __init__(self):
         self.remembered = []
+        self.closed = 0
 
     def recall_detailed(self, ctx, query, *, k=5, tags=None, min_importance=0.0):
         return [("m1", "past plan A")]
@@ -21,6 +22,9 @@ class _FakeMem:
 
     def feedback(self, ctx, mid, *, weight=1.0):
         pass
+
+    def close(self):
+        self.closed += 1
 
 
 def _ok_brain(idea, grounding, *, cwd, timeout=1800):
@@ -151,3 +155,64 @@ def test_persist_remember_failure_is_nonfatal(valid_config, tmp_path, monkeypatc
     assert "non-fatal" in persist_phases[0].detail
     assert report.memory_id is None
     assert report.edges == []
+
+
+# ---------------------------------------------------------------------------
+# FIX 2 — client ownership / close semantics
+# ---------------------------------------------------------------------------
+
+
+def test_injected_memory_is_not_closed(valid_config, tmp_path, monkeypatch):
+    """When the caller injects a memory client, plan_idea must NOT close it —
+    the caller owns its lifecycle."""
+    valid_config = valid_config.model_copy(update={"plan_dir": str(tmp_path / "p")})
+    monkeypatch.setattr("kagura_planner.plan.run_all", lambda cfg: [])
+    monkeypatch.setattr("kagura_planner.plan.invoke_brain", _ok_brain)
+    mem = _FakeMem()
+    report = plan_idea(valid_config, "idea", date="2026-06-08", memory=mem)
+    assert report.status is PlanStatus.OK
+    assert mem.closed == 0, "injected client must not be closed by plan_idea"
+
+
+def test_owned_memory_is_closed_once(valid_config, tmp_path, monkeypatch):
+    """When plan_idea creates the client itself (memory not injected) it owns it
+    and must close() it exactly once on the success path."""
+    valid_config = valid_config.model_copy(update={"plan_dir": str(tmp_path / "p")})
+    monkeypatch.setattr("kagura_planner.plan.run_all", lambda cfg: [])
+    monkeypatch.setattr("kagura_planner.plan.invoke_brain", _ok_brain)
+    mem = _FakeMem()
+    monkeypatch.setattr("kagura_planner.plan.resolve_memory_client", lambda cfg: mem)
+    report = plan_idea(valid_config, "idea", date="2026-06-08")  # not injected
+    assert report.status is PlanStatus.OK
+    assert mem.closed == 1, "owned client must be closed exactly once"
+
+
+def test_owned_memory_closed_on_blocked_path(valid_config, monkeypatch):
+    """Ownership cleanup runs on EVERY return path, including the early BLOCKED
+    guard return."""
+    from kagura_planner.doctor.result import CheckResult, Status
+    monkeypatch.setattr(
+        "kagura_planner.plan.run_all",
+        lambda cfg: [CheckResult("skills", Status.FAIL, "missing")],
+    )
+    mem = _FakeMem()
+    monkeypatch.setattr("kagura_planner.plan.resolve_memory_client", lambda cfg: mem)
+    report = plan_idea(valid_config, "idea", date="2026-06-08")
+    assert report.status is PlanStatus.BLOCKED
+    assert mem.closed == 1, "owned client must be closed even on the BLOCKED path"
+
+
+def test_owned_memory_close_failure_is_best_effort(valid_config, tmp_path, monkeypatch):
+    """A close() that raises must NOT turn a successful plan into a failure."""
+    valid_config = valid_config.model_copy(update={"plan_dir": str(tmp_path / "p")})
+    monkeypatch.setattr("kagura_planner.plan.run_all", lambda cfg: [])
+    monkeypatch.setattr("kagura_planner.plan.invoke_brain", _ok_brain)
+
+    class _BoomCloseMem(_FakeMem):
+        def close(self):
+            raise RuntimeError("close exploded")
+
+    mem = _BoomCloseMem()
+    monkeypatch.setattr("kagura_planner.plan.resolve_memory_client", lambda cfg: mem)
+    report = plan_idea(valid_config, "idea", date="2026-06-08")
+    assert report.status is PlanStatus.OK, "close failure must stay best-effort"

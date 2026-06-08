@@ -27,11 +27,28 @@ STATUS_EXIT: dict[PlanStatus, int] = {
 _EDGE_RELATION = "refines"  # plan → recalled memory it builds on
 
 
+def _safe_close(mem: MemoryClient) -> None:
+    """Best-effort teardown of a memory client plan_idea OWNS. Closing must
+    never turn a successful plan into a failure, so swallow everything (and
+    skip clients that expose no close())."""
+    closer = getattr(mem, "close", None)
+    if closer is None:
+        return
+    try:
+        closer()
+    except Exception:  # noqa: BLE001 — teardown must never raise
+        _log.exception("plan memory close failed (non-fatal)")
+
+
 def plan_idea(
     cfg: Config, idea: str, *, date: str,
     memory: MemoryClient | None = None, repo_root: Path | None = None,
     no_remember: bool = False,
 ) -> PlanReport:
+    # Ownership: if the caller injected a client they own its lifecycle; only a
+    # client we resolve ourselves gets closed here (it holds a persistent event
+    # loop + httpx client that would otherwise leak — issue #2).
+    owns_mem = memory is None
     mem = memory if memory is not None else resolve_memory_client(cfg)
     root = repo_root if repo_root is not None else Path.cwd()
     started = time.monotonic()
@@ -40,79 +57,84 @@ def plan_idea(
     def _finish(**kw: object) -> PlanReport:
         return PlanReport(idea=idea, phases=phases, duration_s=time.monotonic() - started, **kw)  # type: ignore[arg-type]
 
-    # 0. guard — verify environment; do not auto-provision.
-    blocking = [c for c in run_all(cfg) if c.is_blocking]
-    if blocking:
-        names = ", ".join(c.name for c in blocking)
-        phases.append(PhaseResult("guard", PlanStatus.BLOCKED, f"blocking checks failed: {names}"))
-        return _finish()
-    phases.append(PhaseResult("guard", PlanStatus.OK, "all blocking checks passed"))
-
-    # 1. recall — grounding. Memory is core: a failure is a hard FAIL.
-    recalled: list[tuple[str, str]] = []
     try:
-        recalled = mem.recall_detailed(cfg.context_id, f"plan for: {idea}", k=5)
-    except Exception as exc:  # noqa: BLE001 — convert SDK leak to FAIL phase
-        _log.exception("plan recall phase failed")
-        phases.append(PhaseResult("recall", PlanStatus.FAIL, f"memory recall failed: {type(exc).__name__}: {exc}"))
-        return _finish()
-    grounding = [s for _, s in recalled]
-    phases.append(PhaseResult("recall", PlanStatus.OK, f"{len(grounding)} memories"))
+        # 0. guard — verify environment; do not auto-provision.
+        blocking = [c for c in run_all(cfg) if c.is_blocking]
+        if blocking:
+            names = ", ".join(c.name for c in blocking)
+            phases.append(PhaseResult("guard", PlanStatus.BLOCKED, f"blocking checks failed: {names}"))
+            return _finish()
+        phases.append(PhaseResult("guard", PlanStatus.OK, "all blocking checks passed"))
 
-    # 2. brain — claude -p planning skills.
-    try:
-        brain = invoke_brain(idea, grounding, cwd=root)
-    except OSError as exc:
-        _log.exception("plan brain failed to launch claude")
-        phases.append(PhaseResult("brain", PlanStatus.FAIL, f"failed to launch claude: {exc}"))
-        return _finish()
-    if brain.returncode != 0:
-        tail = "timed out" if brain.timed_out else (brain.stderr or "").strip()[-200:]
-        phases.append(PhaseResult("brain", PlanStatus.FAIL, f"claude exited {brain.returncode}: {tail}"))
-        return _finish()
-    if not brain.plan_md:
-        phases.append(PhaseResult("brain", PlanStatus.FAIL, "no plan block in claude output"))
-        return _finish()
-    phases.append(PhaseResult("brain", PlanStatus.OK, "plan produced"))
-
-    # 3. write doc.
-    try:
-        doc_path = write_plan_doc(plan_dir=root / cfg.plan_dir, idea=idea, plan_md=brain.plan_md, date=date)
-    except OSError as exc:
-        _log.exception("plan doc write failed")
-        phases.append(PhaseResult("write", PlanStatus.FAIL, f"could not write plan doc: {exc}"))
-        return _finish()
-    phases.append(PhaseResult("write", PlanStatus.OK, doc_path))
-
-    # 4. persist — remember + refines edges + feedback (best-effort; doc already landed).
-    memory_id: str | None = None
-    edges: list[str] = []
-    if not no_remember:
+        # 1. recall — grounding. Memory is core: a failure is a hard FAIL.
+        recalled: list[tuple[str, str]] = []
         try:
-            memory_id = mem.remember(
-                cfg.context_id,
-                summary=f"plan: {idea}",
-                content=brain.plan_md,
-                type="decision",
-                tags=[f"repo:{root.name}", "plan", "kagura-planner"],
-            )
-            phases.append(PhaseResult("persist", PlanStatus.OK, f"remembered {memory_id}"))
-        except Exception as exc:  # noqa: BLE001 — doc exists; persist is best-effort
-            _log.exception("plan persist failed (non-fatal)")
-            phases.append(PhaseResult("persist", PlanStatus.OK, f"remember failed (non-fatal): {type(exc).__name__}"))
-        # wire refines edges to the recalled memories this plan builds on,
-        # and reinforce them (Hebbian). Best-effort: a graph/feedback hiccup
-        # must not fail a run whose doc + memory already landed.
-        if memory_id:
-            for mid, _ in recalled:
-                try:
-                    mem.create_edge(cfg.context_id, memory_id, mid, _EDGE_RELATION)
-                    edges.append(f"{memory_id}->{mid}:{_EDGE_RELATION}")
-                except Exception:  # noqa: BLE001
-                    _log.exception("plan create_edge failed (non-fatal)")
-                try:
-                    mem.feedback(cfg.context_id, mid)
-                except Exception:  # noqa: BLE001
-                    _log.exception("plan feedback failed (non-fatal)")
+            recalled = mem.recall_detailed(cfg.context_id, f"plan for: {idea}", k=5)
+        except Exception as exc:  # noqa: BLE001 — convert SDK leak to FAIL phase
+            _log.exception("plan recall phase failed")
+            phases.append(PhaseResult("recall", PlanStatus.FAIL, f"memory recall failed: {type(exc).__name__}: {exc}"))
+            return _finish()
+        grounding = [s for _, s in recalled]
+        phases.append(PhaseResult("recall", PlanStatus.OK, f"{len(grounding)} memories"))
 
-    return _finish(plan_doc_path=doc_path, memory_id=memory_id, edges=edges)
+        # 2. brain — claude -p planning skills.
+        try:
+            brain = invoke_brain(idea, grounding, cwd=root)
+        except OSError as exc:
+            _log.exception("plan brain failed to launch claude")
+            phases.append(PhaseResult("brain", PlanStatus.FAIL, f"failed to launch claude: {exc}"))
+            return _finish()
+        if brain.returncode != 0:
+            tail = "timed out" if brain.timed_out else (brain.stderr or "").strip()[-200:]
+            phases.append(PhaseResult("brain", PlanStatus.FAIL, f"claude exited {brain.returncode}: {tail}"))
+            return _finish()
+        if not brain.plan_md:
+            phases.append(PhaseResult("brain", PlanStatus.FAIL, "no plan block in claude output"))
+            return _finish()
+        phases.append(PhaseResult("brain", PlanStatus.OK, "plan produced"))
+
+        # 3. write doc.
+        try:
+            doc_path = write_plan_doc(plan_dir=root / cfg.plan_dir, idea=idea, plan_md=brain.plan_md, date=date)
+        except OSError as exc:
+            _log.exception("plan doc write failed")
+            phases.append(PhaseResult("write", PlanStatus.FAIL, f"could not write plan doc: {exc}"))
+            return _finish()
+        phases.append(PhaseResult("write", PlanStatus.OK, doc_path))
+
+        # 4. persist — remember + refines edges + feedback (best-effort; doc already landed).
+        memory_id: str | None = None
+        edges: list[str] = []
+        if not no_remember:
+            try:
+                memory_id = mem.remember(
+                    cfg.context_id,
+                    summary=f"plan: {idea}",
+                    content=brain.plan_md,
+                    type="decision",
+                    tags=[f"repo:{root.name}", "plan", "kagura-planner"],
+                )
+                phases.append(PhaseResult("persist", PlanStatus.OK, f"remembered {memory_id}"))
+            except Exception as exc:  # noqa: BLE001 — doc exists; persist is best-effort
+                _log.exception("plan persist failed (non-fatal)")
+                phases.append(PhaseResult("persist", PlanStatus.OK, f"remember failed (non-fatal): {type(exc).__name__}"))
+            # wire refines edges to the recalled memories this plan builds on,
+            # and reinforce them (Hebbian). Best-effort: a graph/feedback hiccup
+            # must not fail a run whose doc + memory already landed.
+            if memory_id:
+                for mid, _ in recalled:
+                    try:
+                        mem.create_edge(cfg.context_id, memory_id, mid, _EDGE_RELATION)
+                        edges.append(f"{memory_id}->{mid}:{_EDGE_RELATION}")
+                    except Exception:  # noqa: BLE001
+                        _log.exception("plan create_edge failed (non-fatal)")
+                    try:
+                        mem.feedback(cfg.context_id, mid)
+                    except Exception:  # noqa: BLE001
+                        _log.exception("plan feedback failed (non-fatal)")
+
+        return _finish(plan_doc_path=doc_path, memory_id=memory_id, edges=edges)
+    finally:
+        # Close the client on EVERY return path — but only if we own it.
+        if owns_mem:
+            _safe_close(mem)
