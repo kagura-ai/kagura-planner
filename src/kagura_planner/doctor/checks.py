@@ -8,6 +8,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
+from .. import __version__
 from .result import CheckResult, Status
 
 _TIMEOUT = 5
@@ -81,8 +82,16 @@ def check_claude_code() -> CheckResult:
 
 
 def _http_reach(url: str) -> None:
-    """Open url to confirm reachability; raises on connection/HTTP error. Body ignored."""
-    with urllib.request.urlopen(url, timeout=_TIMEOUT) as resp:  # noqa: S310 (trusted config URL)
+    """Open url to confirm reachability; raises on connection/HTTP error. Body ignored.
+
+    Sends an explicit User-Agent: urllib's default ``Python-urllib/*`` is rejected
+    by Cloudflare's WAF (HTTP 403), which would turn a healthy endpoint into a
+    spurious WARN.
+    """
+    req = urllib.request.Request(
+        url, headers={"User-Agent": f"kagura-planner-doctor/{__version__}"}
+    )
+    with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:  # noqa: S310 (trusted config URL)
         resp.read()  # body discarded; open succeeding is sufficient proof of reachability
 
 
