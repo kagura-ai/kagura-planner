@@ -161,7 +161,7 @@ class KaguraCloudClient:
         resp = self._run(self._sdk.remember(
             context_id, summary=summary, content=content, type=type, tags=tags
         ))
-        return str(resp.get("memory_id", ""))
+        return str(resp.get("memory_id") or "")
 
     def feedback(self, context_id: str, memory_id: str, *, weight: float = 1.0) -> None:
         # SDK passthrough — reinforce the memory's neural weight. The offline

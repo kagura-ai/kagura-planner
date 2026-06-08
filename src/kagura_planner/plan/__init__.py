@@ -84,7 +84,7 @@ def plan_idea(
         return _finish()
     phases.append(PhaseResult("write", PlanStatus.OK, doc_path))
 
-    # 4. persist — remember; edges + feedback added in Task 11.
+    # 4. persist — remember + refines edges + feedback (best-effort; doc already landed).
     memory_id: str | None = None
     edges: list[str] = []
     if not no_remember:
