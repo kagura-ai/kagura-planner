@@ -58,3 +58,21 @@ def test_guard_blocks_on_failing_check(valid_config, monkeypatch):
     )
     report = plan_idea(valid_config, "idea", date="2026-06-08", memory=_FakeMem())
     assert report.status is PlanStatus.BLOCKED
+
+
+def test_persist_wires_edges_to_recalled(valid_config, tmp_path, monkeypatch):
+    valid_config = valid_config.model_copy(update={"plan_dir": str(tmp_path / "p")})
+    monkeypatch.setattr("kagura_planner.plan.run_all", lambda cfg: [])
+    monkeypatch.setattr("kagura_planner.plan.invoke_brain", _ok_brain)
+
+    class _Mem(_FakeMem):
+        def __init__(self):
+            super().__init__()
+            self.edges = []
+        def create_edge(self, ctx, src, dst, relation):
+            self.edges.append((src, dst, relation))
+
+    mem = _Mem()
+    report = plan_idea(valid_config, "idea", date="2026-06-08", memory=mem)
+    assert mem.edges == [("mem-new", "m1", "refines")]
+    assert report.edges == ["mem-new->m1:refines"]

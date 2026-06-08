@@ -100,5 +100,19 @@ def plan_idea(
         except Exception as exc:  # noqa: BLE001 — doc exists; persist is best-effort
             _log.exception("plan persist failed (non-fatal)")
             phases.append(PhaseResult("persist", PlanStatus.OK, f"remember failed (non-fatal): {type(exc).__name__}"))
+        # wire refines edges to the recalled memories this plan builds on,
+        # and reinforce them (Hebbian). Best-effort: a graph/feedback hiccup
+        # must not fail a run whose doc + memory already landed.
+        if memory_id:
+            for mid, _ in recalled:
+                try:
+                    mem.create_edge(cfg.context_id, memory_id, mid, _EDGE_RELATION)
+                    edges.append(f"{memory_id}->{mid}:{_EDGE_RELATION}")
+                except Exception:  # noqa: BLE001
+                    _log.exception("plan create_edge failed (non-fatal)")
+                try:
+                    mem.feedback(cfg.context_id, mid)
+                except Exception:  # noqa: BLE001
+                    _log.exception("plan feedback failed (non-fatal)")
 
     return _finish(plan_doc_path=doc_path, memory_id=memory_id, edges=edges)
