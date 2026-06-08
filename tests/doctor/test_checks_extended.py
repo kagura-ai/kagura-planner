@@ -155,3 +155,24 @@ def test_memory_cloud_strips_credentials(monkeypatch):
     assert r.status is Status.OK
     assert "s3cret" not in r.detail
     assert "memory.example.com" in r.detail
+
+
+def test_http_reach_sends_non_default_user_agent(monkeypatch):
+    """The reachability probe must send an explicit User-Agent — Cloudflare's WAF
+    rejects urllib's default `Python-urllib/*` UA with 403, turning a healthy
+    endpoint into a spurious WARN."""
+    captured = {}
+
+    def _capture(req, *a, **k):
+        captured["req"] = req
+        return _FakeResp()
+
+    monkeypatch.setattr(checks.urllib.request, "urlopen", _capture)
+    checks._http_reach("https://memory.example.com/health")
+
+    req = captured["req"]
+    assert isinstance(req, checks.urllib.request.Request)
+    ua = req.get_header("User-agent")
+    assert ua is not None
+    assert "Python-urllib" not in ua
+    assert "kagura-planner" in ua
