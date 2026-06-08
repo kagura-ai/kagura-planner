@@ -54,6 +54,7 @@ def plan(
     config: str = _CONFIG_OPT,
     no_remember: bool = typer.Option(False, "--no-remember", help="skip memory persist (recall still happens)"),
     json_out: bool = typer.Option(False, "--json"),
+    envelope: bool = typer.Option(False, "--envelope", help="emit the agent JSON envelope on stdout"),
 ) -> None:
     """Produce a memory-grounded plan doc from an idea.
 
@@ -65,6 +66,10 @@ def plan(
         typer.echo(f"plan: invalid config '{config}': {exc}", err=True)
         raise typer.Exit(code=2)
     report = plan_idea(cfg, idea, date=_date.today().isoformat(), no_remember=no_remember)
+    if envelope:
+        from .plan.envelope import to_envelope
+        typer.echo(to_envelope(report))
+        raise typer.Exit(code=STATUS_EXIT[report.status])
     typer.echo(plan_to_json(report)) if json_out else plan_print_table(report)
     raise typer.Exit(code=STATUS_EXIT[report.status])
 
