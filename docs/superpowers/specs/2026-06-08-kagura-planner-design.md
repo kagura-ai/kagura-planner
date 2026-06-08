@@ -25,6 +25,34 @@ already provide that) but **cross-session memory grounding**: recall before,
 remember + edges after. A planner without memory is a thin wrapper; with memory
 it makes every plan a recallable decision record that improves the next plan.
 
+### Responsibility boundary — Plan → Build → Verify
+
+The three siblings form a one-directional pipeline. Each owns exactly one verb
+and consumes the next as a **thin CLI via a JSON envelope** — never by
+reimplementing it:
+
+```
+        idea                       issue#                       PR
+ user ───────▶ kagura-planner ───────────▶ kagura-engineer ───────────▶ kagura-code-reviewer
+               `plan`  = PLAN              `run`   = BUILD              (review) = VERIFY
+               (idea → plan doc            (issue# → PR)                (PR → JSON verdict)
+                + optional milestone)
+                    │ recall / remember / edges      │ recall / remember          │ verdict JSON
+                    ▼                                 ▼                            ▼
+        ╔══════════════════════════ Kagura Memory Cloud ══════════════════════════╗
+        ║   cross-session grounding — the shared moat the three siblings ride on   ║
+        ╚══════════════════════════════════════════════════════════════════════════╝
+```
+
+**Boundary rules (no double-implementation):**
+- planner **never builds** — it emits a plan doc / milestone, never a PR or `run`.
+- engineer **never plans** — `goal` *executes* an already-populated milestone; it
+  does not invent goals or decompose ideas. planner produces that milestone input.
+- planner **consumes** `gh-issue-driven:propose` (does not reimplement issue
+  authoring) and **only** on the `--populate` path; the default `plan` path has no
+  `gh-issue-driven` dependency at all.
+- the only shared surface is Memory Cloud — by design, not by duplication.
+
 ## 2. Architecture (engineer-isomorphic, 3-layer)
 
 | layer | implementation |
@@ -112,3 +140,21 @@ default planner ships without a hard `gh-issue-driven` dependency.
   (inherit from kagura-agent memory-access design later if needed).
 - Multi-context planning, plan diffing, plan templates.
 - Any TUI / web surface.
+
+## 10. Implementation review note (2026-06-08)
+
+Boundary audit of the shipped default `plan` path (`plan/__init__.py`,
+`plan_idea`) against the duplication risk flagged at session start:
+
+- The orchestrator is **`guard → recall → brain → write → persist`** only. It
+  does **not** reimplement engineer `run` (no issue→PR, no worktree, no commit
+  loop) nor `gh-issue-driven:plan`.
+- `--populate` (the only path that touches `gh-issue-driven:propose`) is **not
+  yet implemented** (deferred to Plan 4), so there is currently **zero**
+  workflow-layer duplication.
+- Memory grounding is the sole engineer-isomorphic element (recall before,
+  remember + `refines` edges + Hebbian feedback after) — shared moat, not
+  copied logic.
+
+**Verdict:** boundary holds. When Plan 4 lands `--populate`, keep it a *consumer*
+of `propose` (decompose → hand each unit to `propose`), never a reimplementation.
