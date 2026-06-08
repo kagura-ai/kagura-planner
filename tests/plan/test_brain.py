@@ -32,3 +32,30 @@ def test_invoke_brain_parses_subprocess(monkeypatch):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: _Proc())
     res = invoke_brain("idea", ["g"], cwd=None)
     assert res.returncode == 0 and res.plan_md == "# P"
+
+
+def test_invoke_brain_strips_anthropic_api_key_for_subscription(monkeypatch):
+    """The headless child must use Claude Code subscription auth. A stale/invalid
+    ANTHROPIC_API_KEY inherited from the environment (e.g. injected by a
+    surrounding Claude Code session) would OVERRIDE the subscription and make
+    `claude -p` fail with 'Invalid API key'. invoke_brain must not pass it."""
+    import subprocess
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-stale-and-invalid")
+    captured = {}
+
+    class _Proc:
+        returncode = 0
+        stdout = "KAGURA_PLAN_BEGIN\n# P\nKAGURA_PLAN_END"
+        stderr = ""
+
+    def _run(*a, **k):
+        captured["env"] = k.get("env")
+        return _Proc()
+
+    monkeypatch.setattr(subprocess, "run", _run)
+    invoke_brain("idea", ["g"], cwd=None)
+
+    env = captured["env"]
+    assert env is not None, "invoke_brain must pass an explicit env to the subprocess"
+    assert "ANTHROPIC_API_KEY" not in env, "stale key must be stripped (subscription auth)"

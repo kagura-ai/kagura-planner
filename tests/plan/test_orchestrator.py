@@ -137,6 +137,23 @@ def test_brain_nonzero_returncode_is_fail(valid_config, tmp_path, monkeypatch):
     assert brain_phases[0].status is PlanStatus.FAIL
 
 
+def test_brain_failure_detail_falls_back_to_stdout(valid_config, tmp_path, monkeypatch):
+    """`claude -p` prints auth errors (e.g. 'Invalid API key') to STDOUT, not
+    stderr. When stderr is empty the brain failure detail must surface stdout so
+    the real cause isn't hidden as a blank `claude exited 1:`."""
+    valid_config = valid_config.model_copy(update={"plan_dir": str(tmp_path / "p")})
+    monkeypatch.setattr("kagura_planner.plan.run_all", lambda cfg: [])
+    monkeypatch.setattr(
+        "kagura_planner.plan.invoke_brain",
+        lambda *a, **k: BrainResult(1, "Invalid API key · Fix external API key", "", None),
+    )
+    report = plan_idea(valid_config, "idea", date="2026-06-08", memory=_FakeMem())
+    assert report.status is PlanStatus.FAIL
+    brain_phases = [p for p in report.phases if p.name == "brain"]
+    assert brain_phases, "expected a 'brain' phase in report"
+    assert "Invalid API key" in brain_phases[0].detail
+
+
 def test_brain_oserror_is_fail(valid_config, tmp_path, monkeypatch):
     """OSError from invoke_brain (claude not found) must yield PlanStatus.FAIL
     (phase 'brain') with a detail mentioning launch."""
