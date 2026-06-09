@@ -134,6 +134,21 @@ def test_persist_summary_unchanged_for_short_idea(valid_config, tmp_path, monkey
     assert mem.remembered[0][0] == "plan: Add dark mode"
 
 
+def test_persist_summary_truncation_preserves_full_prefix(valid_config, tmp_path, monkeypatch):
+    """Hardening (PR #8 review): the 'plan: ' marker must survive truncation in
+    full — only the idea is trimmed — and the result lands exactly on the cap
+    with a trailing ellipsis, so it never overflows nor loses the marker."""
+    valid_config = valid_config.model_copy(update={"plan_dir": str(tmp_path / "p")})
+    monkeypatch.setattr("kagura_planner.plan.run_all", lambda cfg: [])
+    monkeypatch.setattr("kagura_planner.plan.invoke_brain", _ok_brain)
+    mem = _FakeMem()
+    plan_idea(valid_config, "x" * 1000, date="2026-06-08", memory=mem)
+    summary = mem.remembered[0][0]
+    assert summary.startswith("plan: "), "full marker must be preserved"
+    assert summary.endswith("…"), "truncated summary must end with an ellipsis"
+    assert len(summary) == 500, f"truncated summary must hit the cap exactly: {len(summary)}"
+
+
 # ---------------------------------------------------------------------------
 # §6 fault-path isolation tests
 # ---------------------------------------------------------------------------
