@@ -102,6 +102,39 @@ def test_edge_relation_is_a_valid_server_edge_type():
 
 
 # ---------------------------------------------------------------------------
+# issue #6 — persisted summary must respect the Memory Cloud 500-char cap
+# ---------------------------------------------------------------------------
+
+
+def test_persist_summary_is_bounded_for_long_idea(valid_config, tmp_path, monkeypatch):
+    """A long idea must not overflow the server-side RememberRequest.summary
+    500-char limit (issue #6): the persisted summary must be <= 500 chars and
+    still record the plan, instead of silently dropping the decision record."""
+    valid_config = valid_config.model_copy(update={"plan_dir": str(tmp_path / "p")})
+    monkeypatch.setattr("kagura_planner.plan.run_all", lambda cfg: [])
+    monkeypatch.setattr("kagura_planner.plan.invoke_brain", _ok_brain)
+    long_idea = "Add a feature that " + "x" * 600  # well over the 500-char cap
+    mem = _FakeMem()
+    report = plan_idea(valid_config, long_idea, date="2026-06-08", memory=mem)
+    assert report.status is PlanStatus.OK
+    assert report.memory_id == "mem-new", "long idea must still be persisted"
+    assert mem.remembered, "expected a remember() call"
+    summary = mem.remembered[0][0]
+    assert len(summary) <= 500, f"summary overflowed cap: {len(summary)} chars"
+    assert summary.startswith("plan: "), "summary should keep the 'plan:' prefix"
+
+
+def test_persist_summary_unchanged_for_short_idea(valid_config, tmp_path, monkeypatch):
+    """A short idea must be persisted verbatim (no needless truncation)."""
+    valid_config = valid_config.model_copy(update={"plan_dir": str(tmp_path / "p")})
+    monkeypatch.setattr("kagura_planner.plan.run_all", lambda cfg: [])
+    monkeypatch.setattr("kagura_planner.plan.invoke_brain", _ok_brain)
+    mem = _FakeMem()
+    plan_idea(valid_config, "Add dark mode", date="2026-06-08", memory=mem)
+    assert mem.remembered[0][0] == "plan: Add dark mode"
+
+
+# ---------------------------------------------------------------------------
 # §6 fault-path isolation tests
 # ---------------------------------------------------------------------------
 

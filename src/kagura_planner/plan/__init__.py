@@ -25,6 +25,19 @@ STATUS_EXIT: dict[PlanStatus, int] = {
 }
 
 _EDGE_RELATION = "depends_on"  # plan → recalled memory it builds on (server edge_type)
+_SUMMARY_MAX = 500  # Memory Cloud caps RememberRequest.summary at 500 chars (issue #6)
+
+
+def _plan_summary(idea: str) -> str:
+    """Bounded summary for the persisted decision record. The raw idea is
+    arbitrary length, but Memory Cloud rejects a RememberRequest whose summary
+    exceeds 500 chars — which silently dropped the persisted plan + edges for
+    any idea over ~493 chars (issue #6). Truncate with an ellipsis so the
+    summary always fits while keeping the leading 'plan:' marker."""
+    summary = f"plan: {idea}"
+    if len(summary) <= _SUMMARY_MAX:
+        return summary
+    return summary[: _SUMMARY_MAX - 1] + "…"
 
 
 def _safe_close(mem: MemoryClient) -> None:
@@ -111,7 +124,7 @@ def plan_idea(
             try:
                 memory_id = mem.remember(
                     cfg.context_id,
-                    summary=f"plan: {idea}",
+                    summary=_plan_summary(idea),
                     content=brain.plan_md,
                     type="decision",
                     tags=[f"repo:{root.name}", "plan", "kagura-planner"],
