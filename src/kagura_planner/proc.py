@@ -1,10 +1,11 @@
-"""Subprocess helpers shared by the brain wrapper."""
+"""Subprocess helpers — re-exported from the shared claude-harness package.
+
+`as_text`/`mcp_args` now live in `kagura_claude_harness.proc` so the launcher
+seam is defined in exactly one place. Re-exported here to keep the existing
+`kagura_planner.proc` import path stable.
+"""
 from __future__ import annotations
 
+from kagura_claude_harness.proc import as_text, mcp_args
 
-def as_text(value: bytes | str | None) -> str:
-    """Normalize subprocess stdout/stderr to str (TimeoutExpired carries raw
-    bytes even under text=True)."""
-    if isinstance(value, bytes):
-        return value.decode(errors="replace")
-    return value or ""
+__all__ = ["as_text", "mcp_args"]
