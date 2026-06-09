@@ -10,25 +10,26 @@ sentinel markers:
     KAGURA_PLAN_END
 
 `extract_plan` pulls the block out; a missing block parses to None, which the
-orchestrator treats as a FAIL (no plan produced). `claude` runs on the Claude
-Code subscription auth (no ANTHROPIC_API_KEY needed); we never pass a key.
+orchestrator treats as a FAIL (no plan produced).
+
+The headless launch itself — `claude -p` on subscription auth, stripping a
+stale `ANTHROPIC_API_KEY`, timeout/partial-output handling — lives in the shared
+`kagura_claude_harness.brain` launcher. This module keeps only the planner
+domain: the prompt, the sentinel pair, and the `plan_md`-carrying result shape
+the orchestrator consumes.
 """
 from __future__ import annotations
 
-import os
-import re
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..proc import as_text
+from kagura_claude_harness.brain import extract_block
+from kagura_claude_harness.brain import invoke as _invoke
 
 _BRAIN_TIMEOUT_S = 1800  # 30 min
 
-_PLAN_RE = re.compile(
-    r"^KAGURA_PLAN_BEGIN\s*$(.*?)^KAGURA_PLAN_END\s*$",
-    re.MULTILINE | re.DOTALL,
-)
+_PLAN_BEGIN = "KAGURA_PLAN_BEGIN"
+_PLAN_END = "KAGURA_PLAN_END"
 
 
 @dataclass(frozen=True)
@@ -52,37 +53,28 @@ def build_prompt(idea: str, grounding: list[str]) -> str:
         "`superpowers:writing-plans` to produce a concrete multi-step plan. "
         "Use the recalled memory to avoid repeating past decisions and known traps.\n\n"
         "When finished, print the FINAL plan markdown LAST, wrapped EXACTLY like:\n"
-        "KAGURA_PLAN_BEGIN\n"
+        f"{_PLAN_BEGIN}\n"
         "<the full plan markdown>\n"
-        "KAGURA_PLAN_END\n"
+        f"{_PLAN_END}\n"
     )
 
 
 def extract_plan(text: str) -> str | None:
-    m = _PLAN_RE.search(text or "")
-    return m.group(1).strip() if m else None
+    return extract_block(text or "", _PLAN_BEGIN, _PLAN_END)
 
 
 def invoke_brain(
     idea: str, grounding: list[str], *, cwd: Path | None,
     timeout: int = _BRAIN_TIMEOUT_S,
 ) -> BrainResult:
+    """Build the planning prompt, run it through the shared headless launcher,
+    and parse the sentinel-wrapped plan block out of stdout.
+
+    `claude` runs on the Claude Code subscription (no `ANTHROPIC_API_KEY`) — the
+    launcher strips a stale key so it cannot override the subscription login.
+    """
     prompt = build_prompt(idea, grounding)
-    # Run the child on Claude Code SUBSCRIPTION auth — strip ANTHROPIC_API_KEY
-    # from its env. A stale/invalid key inherited from the environment (notably
-    # one injected by a surrounding Claude Code session) would otherwise OVERRIDE
-    # the subscription and make `claude -p` die with "Invalid API key". This makes
-    # the code match this module's "we never pass a key" contract.
-    child_env = os.environ.copy()
-    child_env.pop("ANTHROPIC_API_KEY", None)
-    # OSError (claude not on PATH) is NOT caught here — the orchestrator guard
-    # (doctor's blocking claude/skills checks) verifies launchability first.
-    try:
-        proc = subprocess.run(
-            ["claude", "-p", prompt],
-            cwd=cwd, capture_output=True, text=True, timeout=timeout, env=child_env,
-        )
-    except subprocess.TimeoutExpired as exc:
-        return BrainResult(-1, as_text(exc.stdout), as_text(exc.stderr) or "timed out",
-                           None, timed_out=True)
-    return BrainResult(proc.returncode, proc.stdout, proc.stderr, extract_plan(proc.stdout))
+    res = _invoke(prompt, cwd=cwd, timeout=timeout)
+    # On timeout the partial stdout is diagnostic only — no completed plan block.
+    plan_md = None if res.timed_out else extract_plan(res.stdout)
+    return BrainResult(res.returncode, res.stdout, res.stderr, plan_md, timed_out=res.timed_out)
