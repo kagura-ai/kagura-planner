@@ -26,18 +26,21 @@ STATUS_EXIT: dict[PlanStatus, int] = {
 
 _EDGE_RELATION = "depends_on"  # plan → recalled memory it builds on (server edge_type)
 _SUMMARY_MAX = 500  # Memory Cloud caps RememberRequest.summary at 500 chars (issue #6)
+_SUMMARY_PREFIX = "plan: "  # marker kept verbatim; only the idea is truncated
 
 
 def _plan_summary(idea: str) -> str:
     """Bounded summary for the persisted decision record. The raw idea is
     arbitrary length, but Memory Cloud rejects a RememberRequest whose summary
     exceeds 500 chars — which silently dropped the persisted plan + edges for
-    any idea over ~493 chars (issue #6). Truncate with an ellipsis so the
-    summary always fits while keeping the leading 'plan:' marker."""
-    summary = f"plan: {idea}"
+    any idea over ~493 chars (issue #6). Truncate the *idea* (never the marker)
+    with an ellipsis so the result always fits AND keeps the leading 'plan: '
+    marker, regardless of _SUMMARY_MAX or prefix length."""
+    summary = f"{_SUMMARY_PREFIX}{idea}"
     if len(summary) <= _SUMMARY_MAX:
         return summary
-    return summary[: _SUMMARY_MAX - 1] + "…"
+    keep = max(_SUMMARY_MAX - len(_SUMMARY_PREFIX) - 1, 0)  # room for prefix + "…"
+    return f"{_SUMMARY_PREFIX}{idea[:keep]}…"
 
 
 def _safe_close(mem: MemoryClient) -> None:
