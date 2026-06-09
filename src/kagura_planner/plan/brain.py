@@ -14,7 +14,7 @@ orchestrator treats as a FAIL (no plan produced).
 
 The headless launch itself — `claude -p` on subscription auth, stripping a
 stale `ANTHROPIC_API_KEY`, timeout/partial-output handling — lives in the shared
-`kagura_claude_harness.brain` launcher. This module keeps only the planner
+`kagura_brain.claude` launcher. This module keeps only the planner
 domain: the prompt, the sentinel pair, and the `plan_md`-carrying result shape
 the orchestrator consumes.
 """
@@ -23,8 +23,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from kagura_claude_harness.brain import extract_block
-from kagura_claude_harness.brain import invoke as _invoke
+from kagura_brain.claude import invoke as _invoke
+from kagura_brain.core import extract_block
 
 _BRAIN_TIMEOUT_S = 1800  # 30 min
 
