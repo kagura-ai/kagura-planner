@@ -1,3 +1,3 @@
 """kagura-planner — memory-grounded PLAN-layer CLI over Claude Code + Kagura Memory."""
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
