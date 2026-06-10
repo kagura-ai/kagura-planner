@@ -58,7 +58,8 @@ def plan(
 ) -> None:
     """Produce a memory-grounded plan doc from an idea.
 
-    Exit codes: 0 = plan written · 1 = hard fail · 2 = blocked (env guard).
+    Exit codes: 0 = plan written · 1 = hard fail · 2 = blocked (env guard) ·
+    3 = degraded (plan doc written, but best-effort persist to Memory Cloud failed).
     """
     try:
         cfg = load_config(config)

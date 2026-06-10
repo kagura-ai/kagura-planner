@@ -35,7 +35,7 @@ class MemoryClient(Protocol):
     def remember(
         self, context_id: str, *, summary: str, content: str, type: str,
         tags: list[str] | None = None,
-    ) -> str: ...
+    ) -> str | None: ...  # None when nothing was persisted (no memory_id) — #14
     # Reinforce a memory that proved useful (Hebbian-style). `weight` scales
     # the reinforcement; the implementation decides how it is applied.
     def feedback(self, context_id: str, memory_id: str, *, weight: float = 1.0) -> None: ...
@@ -160,12 +160,15 @@ class KaguraCloudClient:
     def remember(
         self, context_id: str, *, summary: str, content: str, type: str,
         tags: list[str] | None = None,
-    ) -> str:
+    ) -> str | None:
         resp = self._run(self._sdk.remember(
             context_id, summary=summary, content=content, type=type, tags=tags
         ))
-        # memory_id is already a str when present; None/missing → "".
-        return resp.get("memory_id") or ""
+        # Return None (not "") when the cloud response carries no memory_id, so the
+        # caller can distinguish "persisted with id" from "nothing was written" and
+        # mark the persist phase WARN instead of a silent OK (#14).
+        memory_id = resp.get("memory_id")
+        return memory_id if memory_id else None
 
     def feedback(self, context_id: str, memory_id: str, *, weight: float = 1.0) -> None:
         # The cloud SDK speaks the MCP `feedback` contract — an append-only
