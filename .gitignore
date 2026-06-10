@@ -11,5 +11,7 @@ __pycache__/
 .pytest_cache/
 .coverage
 dist/
+# library, not an application — uv's resolved lockfile is a local artifact, not pinned for consumers
+uv.lock
 # tool-generated local artifacts (e.g. kagura-code-reviewer's review.json)
 /.kagura/
