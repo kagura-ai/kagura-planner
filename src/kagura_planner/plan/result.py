@@ -6,11 +6,16 @@ from dataclasses import dataclass, field
 
 class PlanStatus(enum.Enum):
     OK = "ok"
+    WARN = "warn"  # degraded but not fatal — e.g. best-effort persist failed (#14)
     BLOCKED = "blocked"
     FAIL = "fail"
 
 
-_WORST = {PlanStatus.OK: 0, PlanStatus.BLOCKED: 1, PlanStatus.FAIL: 2}
+# WARN ranks just above OK: a degraded persist must outrank OK (so it is never
+# masked) yet stay below the hard failures (a real FAIL/BLOCKED still wins the
+# worst-of-phases roll-up). Every PlanStatus MUST have an entry here — see the
+# totality contract test in tests/plan/test_result.py (#14).
+_WORST = {PlanStatus.OK: 0, PlanStatus.WARN: 1, PlanStatus.BLOCKED: 2, PlanStatus.FAIL: 3}
 
 
 @dataclass(frozen=True)

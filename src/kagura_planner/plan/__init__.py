@@ -21,7 +21,7 @@ from .result import PhaseResult, PlanReport, PlanStatus
 _log = logging.getLogger(__name__)
 
 STATUS_EXIT: dict[PlanStatus, int] = {
-    PlanStatus.OK: 0, PlanStatus.FAIL: 1, PlanStatus.BLOCKED: 2,
+    PlanStatus.OK: 0, PlanStatus.WARN: 3, PlanStatus.FAIL: 1, PlanStatus.BLOCKED: 2,
 }
 
 _EDGE_RELATION = "depends_on"  # plan → recalled memory it builds on (server edge_type)
@@ -132,10 +132,19 @@ def plan_idea(
                     type="decision",
                     tags=[f"repo:{root.name}", "plan", "kagura-planner"],
                 )
-                phases.append(PhaseResult("persist", PlanStatus.OK, f"remembered {memory_id}"))
+                if memory_id:
+                    phases.append(PhaseResult("persist", PlanStatus.OK, f"remembered {memory_id}"))
+                else:
+                    # remember() returned no id — nothing was written. Best-effort,
+                    # but it must not read as OK (#14): an agent gating on memory_id
+                    # would proceed as if the plan were persisted.
+                    memory_id = None
+                    phases.append(PhaseResult("persist", PlanStatus.WARN, "remember returned no memory_id"))
             except Exception as exc:  # noqa: BLE001 — doc exists; persist is best-effort
+                # Degraded, not fatal: the doc already landed. But WARN (not OK) so the
+                # report status / envelope / exit code reflect the silent write loss (#14).
                 _log.exception("plan persist failed (non-fatal)")
-                phases.append(PhaseResult("persist", PlanStatus.OK, f"remember failed (non-fatal): {type(exc).__name__}"))
+                phases.append(PhaseResult("persist", PlanStatus.WARN, f"remember failed (non-fatal): {type(exc).__name__}"))
             # wire refines edges to the recalled memories this plan builds on,
             # and reinforce them (Hebbian). Best-effort: a graph/feedback hiccup
             # must not fail a run whose doc + memory already landed.

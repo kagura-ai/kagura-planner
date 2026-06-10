@@ -49,17 +49,25 @@ The envelope carries:
 
 - `plan_doc_path` — where the plan doc was written (surface this to the user).
 - `summary` — one-line summary of the plan.
-- `memory_id` — the remembered plan (a recallable decision record).
+- `memory_id` — the remembered plan (a recallable decision record), or **`null`**
+  when persist failed (a degraded / exit-3 run — see below).
 - `edges` — links created to recalled memories (refines / supersedes / depends_on).
 
-Report `summary` and `plan_doc_path` to the user, and mention the plan was
-remembered (`memory_id`) so future plans can build on it.
+Report `summary` and `plan_doc_path` to the user. If `memory_id` is non-null,
+mention the plan was remembered so future plans can build on it. If `memory_id`
+is `null` (status `warn` / exit 3), tell the user the plan doc was written but was
+**NOT** persisted to memory — do not claim a recallable record exists.
 
 ## Exit codes
 
-- `0` — plan written successfully.
-- `1` — infra failure (e.g. Memory Cloud or the headless Claude run failed).
+- `0` — plan written successfully and persisted.
+- `1` — hard failure (the headless Claude run failed, recall raised, or the doc
+  could not be written); no plan doc.
 - `2` — blocked by the environment guard (run `kagura-planner doctor` to see why).
+- `3` — degraded: the plan doc **was** written (`plan_doc_path` is valid), but the
+  best-effort persist to Memory Cloud failed, so `memory_id` is `null`. The plan
+  exists — surface it; do **not** re-run.
 
 On a non-zero exit, explain the failing phase from the envelope/output rather than
-blindly re-running the same command.
+blindly re-running the same command. Exit `3` is **not** a failure to re-run: the
+plan doc landed; only persistence was lost.

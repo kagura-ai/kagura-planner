@@ -138,6 +138,27 @@ def test_explore_empty_response():
 # ---------------------------------------------------------------------------
 
 
+def test_remember_returns_none_when_sdk_response_has_no_id():
+    """issue #14: a remember() that comes back without a memory_id must return
+    None (not ""), so the orchestrator can tell "persisted with id" from
+    "nothing was written" and mark the persist phase WARN."""
+
+    class _NoIdSDK(_FakeSDK):
+        async def remember(self, context_id, summary, content, type="note", **kw):
+            self.calls.append(("remember", context_id, summary, type))
+            return {}  # cloud returned no memory_id
+
+    assert KaguraCloudClient(_NoIdSDK()).remember(
+        "ctx", summary="s", content="c", type="decision"
+    ) is None
+
+
+def test_remember_returns_id_when_present():
+    assert KaguraCloudClient(_FakeSDK()).remember(
+        "ctx", summary="s", content="c", type="decision"
+    ) == "mem-new"
+
+
 def test_feedback_calls_sdk_with_helpful_true_no_weight():
     """The wrapper must call the real SDK signature feedback(context_id,
     memory_id, helpful, ...) with helpful=True (reinforcement = "this memory

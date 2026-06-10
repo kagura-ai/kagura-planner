@@ -66,17 +66,18 @@ class _SDKRememberMissingKey:
         return {}
 
 
-def test_remember_none_memory_id_returns_empty_string():
-    """If SDK returns {"memory_id": None}, remember() must return "", not "None"."""
+def test_remember_none_memory_id_returns_none():
+    """If SDK returns {"memory_id": None}, remember() must return None (#14) so the
+    caller can tell "nothing persisted" from a real id — never "" or "None"."""
     mid = KaguraCloudClient(_SDKRememberNone()).remember(
         "ctx", summary="s", content="c", type="decision"
     )
-    assert mid == "", f"expected '' but got {mid!r}"
+    assert mid is None, f"expected None but got {mid!r}"
 
 
-def test_remember_missing_key_returns_empty_string():
-    """If SDK returns {} (key absent), remember() must return ""."""
+def test_remember_missing_key_returns_none():
+    """If SDK returns {} (key absent), remember() must return None (#14)."""
     mid = KaguraCloudClient(_SDKRememberMissingKey()).remember(
         "ctx", summary="s", content="c", type="decision"
     )
-    assert mid == "", f"expected '' but got {mid!r}"
+    assert mid is None, f"expected None but got {mid!r}"

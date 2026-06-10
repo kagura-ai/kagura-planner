@@ -7,7 +7,7 @@ from rich.table import Table
 
 from .result import PhaseResult, PlanReport, PlanStatus
 
-_ICON = {PlanStatus.OK: "✅", PlanStatus.BLOCKED: "⏸", PlanStatus.FAIL: "❌"}
+_ICON = {PlanStatus.OK: "✅", PlanStatus.WARN: "⚠️", PlanStatus.BLOCKED: "⏸", PlanStatus.FAIL: "❌"}
 
 
 def _phase_to_dict(p: PhaseResult) -> dict[str, object]:

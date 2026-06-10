@@ -54,6 +54,44 @@ def test_brain_failure_is_fail(valid_config, tmp_path, monkeypatch):
     assert report.status is PlanStatus.FAIL
 
 
+# issue #14 — a best-effort persist failure must surface as WARN, not OK, so the
+# report status / envelope / exit code reflect the silent memory-write loss.
+def test_persist_exception_is_warn_not_ok(valid_config, tmp_path, monkeypatch):
+    valid_config = valid_config.model_copy(update={"plan_dir": str(tmp_path / "p")})
+    monkeypatch.setattr("kagura_planner.plan.run_all", lambda cfg: [])
+    monkeypatch.setattr("kagura_planner.plan.invoke_brain", _ok_brain)
+
+    class _BoomMem(_FakeMem):
+        def remember(self, ctx, *, summary, content, type, tags=None):
+            raise RuntimeError("cloud down")
+
+    report = plan_idea(valid_config, "idea", date="2026-06-08", memory=_BoomMem())
+    assert report.status is PlanStatus.WARN
+    assert report.memory_id is None
+    persist = [p for p in report.phases if p.name == "persist"]
+    assert persist and persist[0].status is PlanStatus.WARN
+    # the doc still landed — persist is best-effort, not a hard failure
+    assert report.plan_doc_path is not None
+
+
+def test_persist_missing_memory_id_is_warn(valid_config, tmp_path, monkeypatch):
+    """remember() returning no id (None) is a silent partial failure → WARN, not OK."""
+    valid_config = valid_config.model_copy(update={"plan_dir": str(tmp_path / "p")})
+    monkeypatch.setattr("kagura_planner.plan.run_all", lambda cfg: [])
+    monkeypatch.setattr("kagura_planner.plan.invoke_brain", _ok_brain)
+
+    class _NoIdMem(_FakeMem):
+        def remember(self, ctx, *, summary, content, type, tags=None):
+            self.remembered.append((summary, type))
+            return None
+
+    report = plan_idea(valid_config, "idea", date="2026-06-08", memory=_NoIdMem())
+    assert report.status is PlanStatus.WARN
+    assert report.memory_id is None
+    persist = [p for p in report.phases if p.name == "persist"]
+    assert persist and persist[0].status is PlanStatus.WARN
+
+
 def test_guard_blocks_on_failing_check(valid_config, monkeypatch):
     from kagura_planner.doctor.result import CheckResult, Status
     monkeypatch.setattr(
@@ -220,9 +258,10 @@ def test_brain_oserror_is_fail(valid_config, tmp_path, monkeypatch):
     assert "launch" in brain_phases[0].detail
 
 
-def test_persist_remember_failure_is_nonfatal(valid_config, tmp_path, monkeypatch):
-    """remember() raising must be non-fatal: doc written, overall OK,
-    persist phase OK with 'non-fatal' note, memory_id is None, no edges wired."""
+def test_persist_remember_failure_is_nonfatal_but_warn(valid_config, tmp_path, monkeypatch):
+    """remember() raising stays non-fatal — doc written, memory_id None, no edges —
+    but the persist phase is WARN, not OK (#14), so the degraded outcome is visible
+    in the report status / envelope / exit code rather than masked as success."""
     valid_config = valid_config.model_copy(update={"plan_dir": str(tmp_path / "p")})
     monkeypatch.setattr("kagura_planner.plan.run_all", lambda cfg: [])
     monkeypatch.setattr("kagura_planner.plan.invoke_brain", _ok_brain)
@@ -232,11 +271,13 @@ def test_persist_remember_failure_is_nonfatal(valid_config, tmp_path, monkeypatc
             raise RuntimeError("remember exploded")
 
     report = plan_idea(valid_config, "idea", date="2026-06-08", memory=_BoomRememberMem())
-    assert report.status is PlanStatus.OK, f"expected OK, got {report.status}"
+    assert report.status is PlanStatus.WARN, f"expected WARN, got {report.status}"
     persist_phases = [p for p in report.phases if p.name == "persist"]
     assert persist_phases, "expected a 'persist' phase in report"
-    assert persist_phases[0].status is PlanStatus.OK
+    assert persist_phases[0].status is PlanStatus.WARN
     assert "non-fatal" in persist_phases[0].detail
+    # still non-fatal: the doc landed and no edges were wired to a nonexistent id
+    assert Path(report.plan_doc_path).is_file()
     assert report.memory_id is None
     assert report.edges == []
 
