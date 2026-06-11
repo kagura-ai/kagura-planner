@@ -66,6 +66,17 @@ def test_load_config_read_pins_utf8(tmp_path, spy_text_opens):
     assert all(e == "utf-8" for e in seen), f"unpinned open observed: {seen}"
 
 
+def test_load_config_invalid_utf8_raises_config_error(tmp_path):
+    """A repo.yaml that is not valid UTF-8 (e.g. saved as cp932/latin-1) must
+    surface as ConfigError — load_config's whole error contract — not as a raw
+    UnicodeDecodeError, which is a ValueError subclass the OSError clause
+    cannot catch."""
+    p = tmp_path / "repo.yaml"
+    p.write_bytes("profile: default\n# メモ\n".encode("cp932"))
+    with pytest.raises(ConfigError, match="could not read config"):
+        load_config(p)
+
+
 def test_load_config_valid(tmp_path):
     p = tmp_path / "repo.yaml"
     p.write_text(
