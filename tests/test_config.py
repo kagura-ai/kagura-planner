@@ -51,6 +51,32 @@ def test_load_config_missing_file(tmp_path):
         load_config(tmp_path / "nope.yaml")
 
 
+def test_load_config_read_pins_utf8(tmp_path, spy_text_opens):
+    """Regression (#18): the config read must pin encoding='utf-8' — the OS
+    default codec (cp932 on Windows-JP) raises UnicodeDecodeError on a UTF-8
+    repo.yaml containing non-ASCII (e.g. a Japanese comment)."""
+    p = tmp_path / "repo.yaml"
+    p.write_text(
+        "profile: default\nmemory_backend: local\n# メモ 🎉\n", encoding="utf-8"
+    )
+    seen = spy_text_opens("repo.yaml")
+    cfg = load_config(p)
+    assert cfg.profile == "default"
+    assert seen, "expected repo.yaml to be opened as text"
+    assert all(e == "utf-8" for e in seen), f"unpinned open observed: {seen}"
+
+
+def test_load_config_invalid_utf8_raises_config_error(tmp_path):
+    """A repo.yaml that is not valid UTF-8 (e.g. saved as cp932/latin-1) must
+    surface as ConfigError — load_config's whole error contract — not as a raw
+    UnicodeDecodeError, which is a ValueError subclass the OSError clause
+    cannot catch."""
+    p = tmp_path / "repo.yaml"
+    p.write_bytes("profile: default\n# メモ\n".encode("cp932"))
+    with pytest.raises(ConfigError, match="could not read config"):
+        load_config(p)
+
+
 def test_load_config_valid(tmp_path):
     p = tmp_path / "repo.yaml"
     p.write_text(
