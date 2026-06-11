@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -14,8 +15,38 @@ from .result import CheckResult, Status
 _TIMEOUT = 5
 
 
+def _launch_argv(cmd: list[str]) -> list[str]:
+    """Resolve ``cmd[0]`` for spawning; wrap Windows ``.cmd``/``.bat`` shims.
+
+    #18 (same root cause as kagura-brain#17): on native Windows,
+    ``CreateProcess`` only auto-appends ``.exe`` — it does NOT apply
+    ``PATHEXT`` — so an npm shim like ``claude.cmd`` is invisible to
+    ``subprocess.run(["claude", ...], shell=False)`` (WinError 2) even though
+    ``shutil.which("claude")`` finds it. Spawn the which-resolved absolute
+    path so the pre-flight check and the launch cannot diverge, and route
+    ``.cmd``/``.bat`` shims through the command interpreter explicitly
+    (``COMSPEC /c <shim>``) while keeping ``shell=False`` — no shell-injection
+    surface is opened. An unresolvable ``cmd[0]`` is left as-is so the OSError
+    surfaces with the caller's own name.
+    """
+    exe = shutil.which(cmd[0]) or cmd[0]
+    if sys.platform == "win32" and exe.lower().endswith((".cmd", ".bat")):
+        comspec = os.environ.get("COMSPEC", "cmd.exe")
+        return [comspec, "/c", exe, *cmd[1:]]
+    return [exe, *cmd[1:]]
+
+
 def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=_TIMEOUT)
+    # utf-8/replace: decoding tool output with the locale codec (cp932 on
+    # Windows-JP) can raise on UTF-8 bytes — same bug class as the file I/O
+    # sites pinned in #18.
+    return subprocess.run(
+        _launch_argv(cmd),
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=_TIMEOUT,
+    )
 
 
 def check_git() -> CheckResult:

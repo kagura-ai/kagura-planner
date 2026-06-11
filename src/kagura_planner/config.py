@@ -50,7 +50,9 @@ def load_config(path: str | Path) -> Config:
     if not p.is_file():
         raise ConfigError(f"config not found: {p}")
     try:
-        text = p.read_text()
+        # Pinned: the locale default (cp932 on Windows-JP) cannot decode a
+        # UTF-8 config containing non-ASCII (#18).
+        text = p.read_text(encoding="utf-8")
     except OSError as exc:
         raise ConfigError(f"could not read config {p}: {exc}") from exc
     try:
